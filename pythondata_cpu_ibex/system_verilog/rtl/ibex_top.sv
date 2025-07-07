@@ -144,7 +144,14 @@ module ibex_top import ibex_pkg::*; #(
   output logic                         core_sleep_o,
 
   // DFT bypass controls
-  input logic                          scan_rst_ni
+  input logic                          scan_rst_ni,
+
+  // CLIC Interface
+  input  logic                         clic_irq_i,         // CLIC interrupt request
+  input  logic [11:0]                  clic_irq_id_i,      // CLIC interrupt ID (up to 4096 interrupts)
+  input  logic [7:0]                   clic_irq_priority_i,// CLIC interrupt priority
+  output logic                         clic_claim_o,       // CLIC claim output
+  output logic [7:0]                   clic_threshold_o    // CLIC threshold output
 );
 
   localparam bit          Lockstep              = SecureIbex;
@@ -284,6 +291,25 @@ module ibex_top import ibex_pkg::*; #(
     assign unused_intg = ^{instr_rdata_intg_i, data_rdata_intg_i};
   end
 
+  // CLIC Integration
+  logic [14:0] irq_fast_clic;
+
+  // Instantiate CLIC wrapper
+  ibex_clic_wrapper u_clic_wrapper (
+    .clk_i               (clk),
+    .rst_ni              (rst_ni),
+    .clic_irq_i          (clic_irq_i),
+    .clic_irq_id_i       (clic_irq_id_i),
+    .clic_irq_priority_i (clic_irq_priority_i),
+    .clic_claim_o        (clic_claim_o),
+    .clic_threshold_o    (clic_threshold_o),
+    .irq_fast_o          (irq_fast_clic)
+  );
+
+  // Combine CLIC interrupts with regular fast interrupts
+  logic [14:0] irq_fast_combined;
+  assign irq_fast_combined = irq_fast_i | irq_fast_clic;
+
   ibex_core #(
     .PMPEnable        (PMPEnable),
     .PMPGranularity   (PMPGranularity),
@@ -369,7 +395,7 @@ module ibex_top import ibex_pkg::*; #(
     .irq_software_i,
     .irq_timer_i,
     .irq_external_i,
-    .irq_fast_i,
+    .irq_fast_i(irq_fast_combined),
     .irq_nm_i,
     .irq_pending_o(irq_pending),
 
